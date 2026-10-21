@@ -8,13 +8,14 @@ data class AlertDecision(
     val nextPriceAlerted: Boolean,
 )
 
-fun alertDecision(product: Product, snapshot: Snapshot): AlertDecision {
-    val price = snapshot.price
+fun alertDecision(product: Product, extraction: Extraction): AlertDecision {
+    val price = extraction.trustedPrice
+    val inStock = extraction.trustedStock
     val target = product.targetPrice
     val priceHit = price != null && target != null && price <= target
     val restocked = product.watchStock &&
         product.lastInStock == false &&
-        snapshot.inStock == true
+        inStock == true
     return AlertDecision(
         notify = restocked || (priceHit && !product.priceAlerted),
         priceHit = priceHit,

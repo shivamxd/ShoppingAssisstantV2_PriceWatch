@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import androidx.core.database.sqlite.transaction
 
-class WatchlistDb(context: Context) : SQLiteOpenHelper(context, "pricewatch.db", null, 1) {
+class WatchlistDb(context: Context) : SQLiteOpenHelper(context, "pricewatch.db", null, 2) {
 
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
@@ -28,7 +28,13 @@ class WatchlistDb(context: Context) : SQLiteOpenHelper(context, "pricewatch.db",
                 last_in_stock INTEGER,
                 last_checked INTEGER NOT NULL DEFAULT 0,
                 last_error TEXT,
-                price_alerted INTEGER NOT NULL DEFAULT 0
+                price_alerted INTEGER NOT NULL DEFAULT 0,
+                failure_count INTEGER NOT NULL DEFAULT 0,
+                last_success INTEGER NOT NULL DEFAULT 0,
+                last_error_type TEXT,
+                last_strategy TEXT,
+                last_confidence REAL,
+                failure_notified INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent(),
         )
@@ -46,7 +52,22 @@ class WatchlistDb(context: Context) : SQLiteOpenHelper(context, "pricewatch.db",
         db.execSQL("CREATE INDEX history_product_time ON history(product_id, checked_at)")
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE products ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE products ADD COLUMN last_success INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE products ADD COLUMN last_error_type TEXT")
+            db.execSQL("ALTER TABLE products ADD COLUMN last_strategy TEXT")
+            db.execSQL("ALTER TABLE products ADD COLUMN last_confidence REAL")
+            db.execSQL(
+                "ALTER TABLE products ADD COLUMN failure_notified INTEGER NOT NULL DEFAULT 0",
+            )
+            db.execSQL(
+                "UPDATE products SET last_success = " +
+                    "CASE WHEN last_error IS NULL THEN last_checked ELSE 0 END",
+            )
+        }
+    }
 
     fun products(): List<Product> =
         readableDatabase.query(
@@ -135,6 +156,8 @@ class WatchlistDb(context: Context) : SQLiteOpenHelper(context, "pricewatch.db",
         inStock: Boolean?,
         checkedAt: Long,
         priceAlerted: Boolean,
+        strategy: String?,
+        confidence: Float?,
     ) {
         writableDatabase.transaction {
             if (price != null || inStock != null) {
@@ -149,9 +172,15 @@ class WatchlistDb(context: Context) : SQLiteOpenHelper(context, "pricewatch.db",
             val values = ContentValues().apply {
                 put("last_checked", checkedAt)
                 putNull("last_error")
+                putNull("last_error_type")
                 put("price_alerted", if (priceAlerted) 1 else 0)
+                put("failure_count", 0)
+                put("failure_notified", 0)
+                put("last_success", checkedAt)
                 if (price != null) put("last_price", price)
                 if (inStock != null) put("last_in_stock", if (inStock) 1 else 0)
+                if (strategy != null) put("last_strategy", strategy)
+                if (confidence != null) put("last_confidence", confidence)
             }
             update("products", values, "id = ?", arrayOf(productId.toString()))
             if (!title.isNullOrBlank()) {
@@ -163,11 +192,21 @@ class WatchlistDb(context: Context) : SQLiteOpenHelper(context, "pricewatch.db",
         }
     }
 
-    fun markFailure(productId: Long, message: String, checkedAt: Long) {
-        val values = ContentValues().apply {
-            put("last_error", message.take(300))
-            put("last_checked", checkedAt)
-        }
+    fun markFailure(
+        productId: Long,
+        message: String,
+        type: CheckFailureType,
+        checkedAt: Long,
+    ) {
+        writableDatabase.execSQL(
+            "UPDATE products SET last_error = ?, last_error_type = ?, last_checked = ?, " +
+                "failure_count = failure_count + 1 WHERE id = ?",
+            arrayOf<Any?>(message.take(300), type.name, checkedAt, productId),
+        )
+    }
+
+    fun markFailureNotified(productId: Long) {
+        val values = ContentValues().apply { put("failure_notified", 1) }
         writableDatabase.update("products", values, "id = ?", arrayOf(productId.toString()))
     }
 
@@ -179,6 +218,7 @@ class WatchlistDb(context: Context) : SQLiteOpenHelper(context, "pricewatch.db",
         val targetIndex = getColumnIndexOrThrow("target_price")
         val priceIndex = getColumnIndexOrThrow("last_price")
         val stockIndex = getColumnIndexOrThrow("last_in_stock")
+        val confidenceIndex = getColumnIndexOrThrow("last_confidence")
         return Product(
             id = getLong(getColumnIndexOrThrow("id")),
             url = getString(getColumnIndexOrThrow("url")),
@@ -191,6 +231,12 @@ class WatchlistDb(context: Context) : SQLiteOpenHelper(context, "pricewatch.db",
             lastCheckedAt = getLong(getColumnIndexOrThrow("last_checked")),
             lastError = getString(getColumnIndexOrThrow("last_error")),
             priceAlerted = getInt(getColumnIndexOrThrow("price_alerted")) != 0,
+            failureCount = getInt(getColumnIndexOrThrow("failure_count")),
+            lastSuccessAt = getLong(getColumnIndexOrThrow("last_success")),
+            lastErrorType = getString(getColumnIndexOrThrow("last_error_type")),
+            lastStrategy = getString(getColumnIndexOrThrow("last_strategy")),
+            lastConfidence = if (isNull(confidenceIndex)) null else getFloat(confidenceIndex),
+            failureNotified = getInt(getColumnIndexOrThrow("failure_notified")) != 0,
         )
     }
 }

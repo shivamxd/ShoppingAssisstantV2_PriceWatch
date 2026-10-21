@@ -17,12 +17,18 @@ class LinksTest {
             "https://www.flipkart.com/triggr/p/itm123?pid=A1",
             normalizeProductUrl("HTTPS://WWW.FLIPKART.COM/triggr/p/itm123?pid=A1"),
         )
+        assertEquals(
+            "https://amzn.in/d/0i1AnnLZ",
+            normalizeProductUrl("http://amzn.in/d/0i1AnnLZ"),
+        )
     }
 
     @Test
     fun rejectsOtherSitesAndInvalidLinks() {
         assertNull(normalizeProductUrl("https://example.com/product"))
         assertNull(normalizeProductUrl("https://amazon.in.evil.example/dp/B000000000"))
+        assertNull(normalizeProductUrl("https://amzn.in.evil.example/d/0i1AnnLZ"))
+        assertNull(normalizeProductUrl("https://notamzn.in/d/0i1AnnLZ"))
         assertNull(normalizeProductUrl("not a link"))
         assertNull(normalizeProductUrl("ftp://www.amazon.in/dp/B000000000"))
     }
@@ -30,6 +36,7 @@ class LinksTest {
     @Test
     fun findsProductSite() {
         assertEquals(AmazonInSite, ProductSites.forUrl("https://www.amazon.in/dp/X"))
+        assertEquals(AmazonInSite, ProductSites.forUrl("https://amzn.in/d/0i1AnnLZ"))
         assertEquals(FlipkartSite, ProductSites.forUrl("https://flipkart.com/x/p/itm1"))
         assertNull(ProductSites.forUrl("https://www.myntra.com/x"))
     }

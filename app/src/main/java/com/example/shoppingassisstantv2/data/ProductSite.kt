@@ -8,7 +8,7 @@ interface ProductSite {
 
     fun matches(host: String): Boolean
 
-    fun parse(html: String, url: String): Snapshot
+    fun parse(html: String, url: String): Extraction
 }
 
 /**

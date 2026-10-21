@@ -57,6 +57,8 @@ import com.example.shoppingassisstantv2.data.PricePoint
 import com.example.shoppingassisstantv2.data.Product
 import com.example.shoppingassisstantv2.data.ProductSites
 import com.example.shoppingassisstantv2.data.asPrice
+import com.example.shoppingassisstantv2.data.failureTypeFromStored
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -135,6 +137,11 @@ fun ProductDetailScreen(
             product.lastError?.let { message ->
                 item {
                     CheckErrorCard(message)
+                }
+            }
+            if (product.lastCheckedAt > 0L) {
+                item {
+                    CheckDetailsCard(product)
                 }
             }
             item {
@@ -287,11 +294,65 @@ private fun CheckErrorCard(message: String) {
                 Text(message, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "It will try again on the next hourly check.",
+                    "It will retry automatically.",
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CheckDetailsCard(product: Product) {
+    val colors = MaterialTheme.colorScheme
+    val errorType = failureTypeFromStored(product.lastErrorType)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainerLow,
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.45f)),
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Text("Check details", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            DiagnosticRow(
+                "Last attempt",
+                if (product.lastCheckedAt == 0L) "Never" else relativeTime(product.lastCheckedAt),
+            )
+            DiagnosticRow(
+                "Last success",
+                if (product.lastSuccessAt == 0L) "Never" else relativeTime(product.lastSuccessAt),
+            )
+            DiagnosticRow("Failed attempts", product.failureCount.toString())
+            DiagnosticRow("Last method", product.lastStrategy?.takeIf { it.isNotBlank() } ?: "—")
+            DiagnosticRow(
+                "Last confidence",
+                product.lastConfidence?.let { "${(it * 100).roundToInt()}%" } ?: "—",
+            )
+            DiagnosticRow("Last error", errorType?.label ?: "—")
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(0.42f),
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(0.58f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

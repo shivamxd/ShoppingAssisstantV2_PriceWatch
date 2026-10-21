@@ -75,16 +75,38 @@ class WatchlistRepository private constructor(context: Context) {
         inStock: Boolean?,
         priceAlerted: Boolean,
         checkedAt: Long,
+        strategy: String?,
+        confidence: Float?,
     ) = withContext(Dispatchers.IO) {
-        db.updateAfterCheck(id, title, price, inStock, checkedAt, priceAlerted)
+        db.updateAfterCheck(
+            productId = id,
+            title = title,
+            price = price,
+            inStock = inStock,
+            checkedAt = checkedAt,
+            priceAlerted = priceAlerted,
+            strategy = strategy,
+            confidence = confidence,
+        )
         reload()
     }
 
-    suspend fun recordFailure(id: Long, message: String, checkedAt: Long) =
-        withContext(Dispatchers.IO) {
-            db.markFailure(id, message, checkedAt)
-            reload()
-        }
+    suspend fun recordFailure(
+        id: Long,
+        message: String,
+        type: CheckFailureType,
+        checkedAt: Long,
+    ): Product? = withContext(Dispatchers.IO) {
+        db.markFailure(id, message, type, checkedAt)
+        val updated = db.product(id)
+        reload()
+        updated
+    }
+
+    suspend fun markFailureNotified(id: Long) = withContext(Dispatchers.IO) {
+        db.markFailureNotified(id)
+        reload()
+    }
 
     private fun reload() {
         _products.value = db.products()
